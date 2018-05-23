@@ -1,92 +1,165 @@
-import pyaudio
 import wave
 from appJar import gui
 from itertools import count
-import random
 import numpy as np
+import cv2
+from os import path
+import pyaudio
+import pygame, sys
+from pygame.locals import *
+
+
+SPEAKER_ID = '000'
 
 FORMAT = pyaudio.paInt16
 CHANNELS = 2
 RATE = 44100
 CHUNK = 1024
 RECORD_SECONDS = 5
-DATA_LOCATION = "/Users/meredithmoore/Dropbox/Research/audio_data_collection/data"
-WAVE_OUTPUT_FILENAME = "file.wav"       #make this dynamic
-
+DATA_LOCATION = "/Volumes/Babelfish/test"
+recording = False
 counter = count(0)
 
-app = gui("Audio Data Collection", "800x600")
+app = gui("Audio Data Collection", "800x400")
 prompt_id = []
 audio = pyaudio.PyAudio()
-num_prompts = 5
+num_timit_prompts = 15
 
 
-#import the prompts from timit_prompts.txt
-prompts = np.load('timit_prompts.npy')
 
-# prompts = [["prompt text goes here", "promptID"], ...]
+# import the prompts from timit_prompts.txt
+timit_prompts = np.load('timit_prompts.npy')
 
-digits = ['one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten']
+digits = 'Please count from 1 to 10.'
 
-grandfather = "You wished to know all about my grandfather. Well, he is nearly 93 years old; " \
-              "he dresses himself in an ancient black frock coat, usually minus several buttons; " \
-              "yet he still thinks as swiftly as ever. A long, flowing beard clings to his chin, " \
-              "giving those who observe him a pronounced feeling of the utmost respect. When he speaks, " \
-              "his voice is just a bit cracked and quivers a trifle. Twice each day he plays skillfully " \
-              "and with zest upon our small organ. Except in the winter when the ooze or snow or ice prevents," \
-              " he slowly takes a short walk in the open air each day. We have often urged him to walk more " \
-              "and smoke less, but he always answers, \"Banana oil!\" Grandfather likes to be modern in his language."
+#digits, then timit prompts, then longer grandfather and rainbow and caterpillar
+prompts = [[digits, 'digits']]
+for x in range(num_timit_prompts):
+    prompts.append(timit_prompts[x][:])
 
-caterpillar = "Do you like amusement parks? Well, I sure do. To amuse myself, I went twice last spring. " \
-              "My most MEMORABLE moment was riding on the Caterpillar, which is a gigantic roller coaster" \
-              " high above the ground. When I saw how high the Caterpillar rose into the bright blue sky I " \
-              "knew it was for me. After waiting in line for thirty minutes, I made it to the front where the " \
-              "man measured my height to see if I was tall enough. I gave the man my coins, asked for change, " \
-              "and jumped on the cart. Tick, tick, tick, the Caterpillar climbed slowly up the tracks." \
-              " It went SO high I could see the parking lot. Boy was I SCARED! I thought to myself, " \
-              "\"There's no turning back now.\" People were so scared they screamed as we swiftly zoomed fast, " \
-              "fast, and faster along the tracks. As quickly as it started, the Caterpillar came to a stop. " \
-              "Unfortunately, it was time to pack the car and drive home. That night I dreamt of the wild ride " \
-              "on the Caterpillar. Taking a trip to the amusement park and riding on the Caterpillar was " \
-              "my MOST memorable moment ever!"
+prompts.append(['Please read the grandfather passage', 'gpa'])
+prompts.append(['Please read the caterpillar passage', 'caterpillar'])
+prompts.append(['Please read the rainbow passage', 'rainbow'])
+prompts.append(['Please describe the photo below: ', 'img1'])
+prompts.append(['Please describe the photo below: ', 'img2'])
+prompts.append(['Please describe the photo below: ', 'img3'])
+prompts.append(['Please describe the photo below: ', 'img4'])
+prompts.append(['Please describe the photo below: ', 'img5'])
 
-#images
+print prompts
 
-
-prompts = prompts[0:num_prompts][:]
+filename = SPEAKER_ID + '_' + prompts[0][1]
+print filename
 
 def press(button):
     iter = next(counter)
+    print iter
+
     if iter < len(prompts):
-        app.setLabelFont("title", 50)
+        app.setLabelFont("title", 80)
         app.setLabel("title", prompts[iter][0])
+        global filename
+        filename = SPEAKER_ID + '_' + prompts[iter][1]
+        print filename
     else:
-        app.setLabel("title", grandfather)
+        app.setLabel("title", "Thank you, you have completed the study")
 
 
 def record(button):
-    stream = audio.open(format=FORMAT, channels=CHANNELS,
-                        rate=RATE, input=True,
-                        frames_per_buffer=CHUNK)
-    print "recording..."
+    pygame.init()
+    scr = pygame.display.set_mode((640, 480))
+    recording = True
+
+    CHUNK = 1024
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 2
+    RATE = 44100
+    WAVE_OUTPUT_FILENAME = filename + '.wav'
+
+    p = pyaudio.PyAudio()
+
+    stream = p.open(format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    frames_per_buffer=CHUNK)
+
+    print("* recording")
+
     frames = []
 
-    for i in range(0, int(RATE / CHUNK * RECORD_SECONDS)):      #change this to a stop button
-        data = stream.read(CHUNK)
-        frames.append(data)
-    print "finished recording"
+    while True:
+        if recording:
+            data = stream.read(CHUNK)
+            frames.append(data)
+
+        if button == 'Stop' and recording:
+            print("* done recording")
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+
+            print 'saving .wav'
+            wf = wave.open(WAVE_OUTPUT_FILENAME, 'wb')
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(p.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b''.join(frames))
+            wf.close()
+            recording = False
+
+
+    #VIDEO RECORDING HERE
+    '''
+    print('[INFO] Warming up camera...')
+    cap = cv2.VideoCapture(0)
+    time.sleep(0.1)
+    #fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    #out = cv2.VideoWriter((outfile+'.mp4'), fourcc, 20.0, (640, 360))
+
+    fps = 15
+    capSize = (1280, 720)
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    out = cv2.VideoWriter(outfile+'.mp4', fourcc, fps, capSize)
+
+    while(cap.isOpened()):
+        ret, frame = cap.read()
+        if ret == True:
+            #write the flipped frame
+            out.write(frame)
+            cv2.imshow('frame', frame)
+            #TODO: Figure out how to stop using a different button
+            if cv2.waitKey(1) &0xFF == ord('q') or not recording:
+                break
+        else:
+            print 'frame not read correctly'
+            break
+    cap.release()
+    out.release()
+    cv2.destroyAllWindows()
+    '''
+
+
+    #once record is pressed again, move on to the next prompt
+
+
+
 
 iter = next(counter)
-if  iter < len(prompts):
-    app.setLabelFont(50)
+if iter < len(prompts):
+    app.setLabelFont(80)
     app.addLabel("title", prompts[iter][0])
 
 
 
+
+#app.addImage("img1", "img1.jpg")
+
 app.addButton("Next", press)
-app.addButton("Record", record)
-app.setFont(18)
+#app.addButton("Record", record)
+#app.addButton("Stop", record)
+app.setFont(24)
 app.setBg("white")
-print iter
+
 
 app.go()
